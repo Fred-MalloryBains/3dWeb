@@ -1,4 +1,4 @@
-## Install steps 
+### Install steps 
 
 ### three.js
 npm install --save three
