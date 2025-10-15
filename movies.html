@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>movies_test</title>
+    <link rel="stylesheet" href="style_m.css">
+  </head>
+  <body>
+  <h1>🎬 Actor Connection Game</h1>
+  
+  <div id="setup">
+    <input id="startActor" list="startSuggestions" placeholder="Enter Initial Actor Name" />
+    <datalist id="startSuggestions"></datalist>
+
+    <input id="goalActor" list="goalSuggestions" placeholder="Enter Goal Actor Name" />
+    <datalist id="goalSuggestions"></datalist>
+    <button onclick="startGame()">Start Game</button>
+  </div>
+
+  <div id="game" style="display:none;">
+  <p>Goal: <span id="goalName"></span></p>
+  <input id="nextActor" list="nextSuggestions" placeholder="Enter next actor name" />
+  <datalist id="nextSuggestions"></datalist>
+  <button onclick="nextTurn()">Submit</button>
+  <div id="loadingBar" style="display:none; margin-top: 10px;">
+    <p>Loading...</p>
+    <progress></progress>
+  </div>
+</div>
+
+  <div id="output"></div>
+  <script type="module" src="/movies.js"></script>
+  </body>
+</html>

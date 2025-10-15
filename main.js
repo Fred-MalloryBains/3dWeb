@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { load_animation_data } from './movies.js';
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -44,6 +45,7 @@ const mouse = new THREE.Vector2();
 
 let computerMesh = null;
 let vinylMesh = null;
+let SuzanneMesh = null;
 
 
 // Load 
@@ -56,6 +58,7 @@ loader.load(
     scene.add(model);
     computerMesh = model.getObjectByName('computer_'); // GLTF JSON
     vinylMesh = model.getObjectByName('box');
+    SuzanneMesh = model.getObjectByName('Suzanne');
   },
   
   (xhr) => {
@@ -92,6 +95,14 @@ window.addEventListener('click', (event) => {
         camera.position.clone(),
         POSITION_VINYL.clone(),
       );
+      animate_box();
+      load_animation_data();
+    }
+  }
+  if (SuzanneMesh) {
+    const intersects = raycaster.intersectObject(SuzanneMesh, true);
+    if (intersects.length > 0) {
+      window.location.href = '/movies.html';
     }
   }
 });
@@ -131,4 +142,16 @@ window.addEventListener('keydown', (event) => {
 function animate() {
   controls.update();
   renderer.render(scene, camera);
+}
+
+function animate_box() {
+  function rotateVinyl() {
+    console.log('camera pos', camera.position);
+    console.log('vinyl pos', POSITION_VINYL);
+    if (camera.position.distanceTo(POSITION_VINYL) < 1) { // Check if the camera is near the vinyl
+      vinylMesh.rotation.y += 0.01;
+      requestAnimationFrame(rotateVinyl);
+    }
+  }
+  rotateVinyl();
 }

@@ -1,0 +1,36 @@
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #121212;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+}
+h1 {
+  color: #ffcc00;
+}
+input, button {
+  padding: 0.5rem;
+  margin: 0.5rem;
+  border-radius: 8px;
+  border: none;
+}
+input {
+  width: 250px;
+}
+button {
+  background-color: #ffcc00;
+  color: #000;
+  font-weight: bold;
+  cursor: pointer;
+}
+#output {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #1f1f1f;
+  border-radius: 10px;
+  width: 80%;
+  max-width: 600px;
+  white-space: pre-wrap;
+}
