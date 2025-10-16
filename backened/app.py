@@ -1,9 +1,10 @@
 # backend/app.py
-from flask import Flask
+from flask import Flask, jsonify, request
 from models import db, Actor, Movie, Cast
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from flask_migrate import Migrate
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///movies.db'
@@ -23,6 +24,20 @@ admin.add_view(ModelView(Actor, db.session))
 admin.add_view(ModelView(Movie, db.session))
 admin.add_view(ModelView(Cast, db.session))
 
+@app.route("/api/actors", methods=["GET"])
+def get_actors():
+    actors = Actor.query.all()
+    data = [{"id": a.id, "name": a.name, "profile_path": a.profile_path} for a in actors]
+    return jsonify(data)
+
+@app.route("/api/movies", methods=["GET"])
+def check_actors(actor_a, actor_b):
+    # Check if two actors have worked together
+    movies = db.session.query(Movie).join(Cast).filter(
+        (Cast.actor_id == actor_a.id) | (Cast.actor_id == actor_b.id)
+    ).group_by(Movie.id).having(db.func.count(Movie.id) > 1).all()
+    return len(movies) > 0
+
 if __name__ == "__main__":
     app.run(debug=True)
-    
+
