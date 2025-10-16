@@ -348,32 +348,51 @@ async function getActor(name) {
     return data.results && data.results.length > 0 ? data.results[0] : null;
 }
 
-async function getMovies(actorId) {
-    const res = await fetch(`${BASE_URL}/person/${actorId}/movie_credits?api_key=${API_KEY}`);
+async function getLinkingMovies(actorId1, actorId2) {
+    console.log ("fetching db");
+    let res = await fetch(
+        `http://127.0.0.1:5000/api/get_linking_movies?actor1=${encodeURIComponent(actorId1)}&actor2=${encodeURIComponent(actorId2)}`
+    );
+    console.log("Status:", res.status);
+
+    let movies = await res.json();
+
+    console.log("Movies from DB:", movies);
+
+    if (movies && movies.length > 0) {
+        console.log("database used");
+        const m = movies[0];
+        return {
+            title: m.title,
+            poster: m.poster_path
+                ? `https://image.tmdb.org/t/p/w92${m.poster_path}`
+                : null
+        };
+    }
+
+    res = await fetch(`${BASE_URL}/person/${actorId1}/movie_credits?api_key=${API_KEY}`);
     const credits = await res.json();
-    const movies = {};
     for (const movie of credits.cast) {
         const creditRes = await fetch(`${BASE_URL}/movie/${movie.id}/credits?api_key=${API_KEY}`);
         const creditData = await creditRes.json();
-        movies[movie.title] = { cast: creditData.cast.map(c => c.name), poster_path: movie.poster_path };
-    }
-    return movies;
-}
-
-function searchMovie(movies, actorName) {
-    for (const [title, info] of Object.entries(movies)) {
-        if (info.cast.includes(actorName)) {
-            console.log (`found: ${info.poster_path}`);
+        if (creditData.cast.some(c => c.id === actorId2)) {
+            console.log("api used");
             return {
-            title,
-            poster: info.poster_path
-                ? `https://image.tmdb.org/t/p/w342${info.poster_path}`
-                : null
+                title: movie.title,
+                poster: movie.poster_path
+                    ? `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+                    : null
             };
         }
-        }
-        return null;
+    }
+    return null;
 }
+
+/*
+function searchMovie(movies, actorName) {
+    
+}
+*/
 
 // Find minimum links using BFS (limited depth for performance)
 async function findMinLinks(startId, goalId, maxDepth = 4) {
@@ -490,9 +509,8 @@ async function nextTurn() {
             return;
         }
 
-        const movies = await getMovies(firstActor.id);
-        const match = searchMovie(movies, nextActor.name);
-
+        const match = await getLinkingMovies(firstActor.id, nextActor.id);
+        console.log (match);
         if (match) {
             // append structured step card connecting actors and movie
             appendStepCard(firstActor, nextActor, match);
