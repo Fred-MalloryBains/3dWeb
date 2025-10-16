@@ -14,6 +14,12 @@ let playerPath = []; // [{id, name, movieTitle, poster}]
 let shortestPath = []; // [{id, name, movieTitle, poster}]
 let minLinks = null;
 
+// NEW: background calculation state
+let calculatingMinLinks = false;
+let minLinksPromise = null;
+let gameFinished = false;
+let finalPlayerLinks = null;
+
 // Helper to get actor name and profile image by ID
 async function getActorInfo(id) {
     const res = await fetch(`${BASE_URL}/person/${id}?api_key=${API_KEY}`);
@@ -24,6 +30,21 @@ async function getActorInfo(id) {
             ? `https://image.tmdb.org/t/p/w92${data.profile_path}`
             : null
     };
+}
+
+// small helper to build a path summary string (used for both player & shortest)
+function buildPathSummary(path) {
+    if (!path || path.length === 0) return "";
+    let summary = "";
+    for (let i = 0; i < path.length - 1; i++) {
+        summary += `<img src="${path[i].profile ? path[i].profile : ""}" style="height:40px;vertical-align:middle;"> ${path[i].name} <br>`;
+        summary += `&nbsp;&nbsp;🎬 <b>${path[i + 1].movieTitle}</b>`;
+        if (path[i + 1].poster)
+            summary += ` <img src="${path[i + 1].poster}" style="height:40px;vertical-align:middle;">`;
+        summary += `<br>`;
+    }
+    summary += `<img src="${path[path.length - 1].profile ? path[path.length - 1].profile : ""}" style="height:40px;vertical-align:middle;"> ${path[path.length - 1].name}`;
+    return summary;
 }
 
 // Update getActorName to use getActorInfo for backward compatibility
@@ -203,16 +224,38 @@ async function startGame() {
         <img src="${goalActor.profile_path ? `https://image.tmdb.org/t/p/w45${goalActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> 
         <b>${goalActor.name}</b>`);
 
-    // Show minimum links needed and store shortest path
-    logOutput("🔎 Calculating minimum links...");
-    const result = await findMinLinksWithPath(firstActor.id, goalActor.id, 3); // Limit depth for speed
-    if (result) {
-        minLinks = result.minLinks;
-        shortestPath = result.path;
-        logOutput(`Minimum links needed: <b>${minLinks}</b>`);
-    } else {
-        logOutput("No connection found within 3 links.");
-    }
+    // Start minimum-links calculation in the background so player can play immediately
+    logOutput("🔎 Calculating minimum links in background...");
+    calculatingMinLinks = true;
+    minLinksPromise = findMinLinksWithPath(firstActor.id, goalActor.id, 3)
+        .then(result => {
+            calculatingMinLinks = false;
+            if (result) {
+                minLinks = result.minLinks;
+                shortestPath = result.path;
+                logOutput(`🔎 Minimum links found: <b>${minLinks}</b>`);
+            } else {
+                minLinks = null;
+                shortestPath = [];
+                logOutput("🔎 No connection found within 3 links.");
+            }
+
+            // If player already finished the game, append the shortest-path summary now
+            if (gameFinished) {
+                const shortestSummary = (shortestPath && shortestPath.length > 0)
+                    ? buildPathSummary(shortestPath)
+                    : "Shortest path not available.";
+                logOutput(`(Updated) Shortest path (${minLinks !== null ? minLinks : "?"} links):<br>${shortestSummary}<br>You were <b>+${finalPlayerLinks - (minLinks || 0)}</b> from par!`);
+            }
+            return result;
+        })
+        .catch(err => {
+            calculatingMinLinks = false;
+            console.error("Error calculating min links:", err);
+            if (gameFinished) {
+                logOutput("(Updated) Shortest path calculation failed.");
+            }
+        });
 
     playerPath = [{
         id: firstActor.id,
@@ -257,39 +300,32 @@ async function nextTurn() {
             });
 
             if (nextActor.name === goalActor.name) {
-                // Game won, show summary
+                // Game won, show summary (shortest path may still be calculating)
                 document.getElementById("game").style.display = "none";
+                gameFinished = true;
+                finalPlayerLinks = playerPath.length - 1;
 
-                // Format player's path
-                let playerSummary = "";
-                for (let i = 0; i < playerPath.length - 1; i++) {
-                    playerSummary += `<img src="${playerPath[i].profile ? playerPath[i].profile : ""}" style="height:40px;vertical-align:middle;"> ${playerPath[i].name} <br>`;
-                    playerSummary += `&nbsp;&nbsp;🎬 <b>${playerPath[i + 1].movieTitle}</b>`;
-                    if (playerPath[i + 1].poster)
-                        playerSummary += ` <img src="${playerPath[i + 1].poster}" style="height:40px;vertical-align:middle;">`;
-                    playerSummary += `<br>`;
-                }
-                playerSummary += `<img src="${playerPath[playerPath.length - 1].profile ? playerPath[playerPath.length - 1].profile : ""}" style="height:40px;vertical-align:middle;"> ${playerPath[playerPath.length - 1].name}`;
+                const playerSummary = buildPathSummary(playerPath);
 
-                // Format shortest path
-                let shortestSummary = "";
-                for (let i = 0; i < shortestPath.length - 1; i++) {
-                    shortestSummary += `<img src="${shortestPath[i].profile ? shortestPath[i].profile : ""}" style="height:40px;vertical-align:middle;"> ${shortestPath[i].name} <br>`;
-                    shortestSummary += `&nbsp;&nbsp;🎬 <b>${shortestPath[i + 1].movieTitle}</b>`;
-                    if (shortestPath[i + 1].poster)
-                        shortestSummary += ` <img src="${shortestPath[i + 1].poster}" style="height:40px;vertical-align:middle;">`;
-                    shortestSummary += `<br>`;
+                let shortestSummaryText = "Shortest path is still being calculated...";
+                let shortestLinksText = "?";
+                if (!calculatingMinLinks && shortestPath && shortestPath.length > 0 && minLinks != null) {
+                    shortestSummaryText = buildPathSummary(shortestPath);
+                    shortestLinksText = minLinks;
                 }
-                shortestSummary += `<img src="${shortestPath[shortestPath.length - 1].profile ? shortestPath[shortestPath.length - 1].profile : ""}" style="height:40px;vertical-align:middle;"> ${shortestPath[shortestPath.length - 1].name}`;
 
                 logOutput("🎉 You won!!<br>" +
                     `Your path (${playerPath.length - 1} links):<br>${playerSummary}<br>` +
-                    `Shortest path (${minLinks} links):<br>${shortestSummary}<br>` +
-                    `You were <b>+${(playerPath.length - 1) - minLinks}</b> from par!`);
+                    `Shortest path (${shortestLinksText} links):<br>${shortestSummaryText}<br>` +
+                    `You were <b>+${finalPlayerLinks - (minLinks || 0)}</b> from par!`);
+
+                // If shortest path is still calculating, minLinksPromise will append an updated summary when ready.
             }
         } else {
             logOutput(`❌ No link found between <img src="${firstActor.profile_path ? `https://image.tmdb.org/t/p/w45${firstActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${firstActor.name}</b> and <img src="${nextActor.profile_path ? `https://image.tmdb.org/t/p/w45${nextActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${nextActor.name}</b>. You lost!`);
             document.getElementById("game").style.display = "none";
+            // stop background update if it completes later (we won't post it in this case)
+            gameFinished = false;
         }
 
         document.getElementById("nextActor").value = "";
@@ -317,8 +353,7 @@ async function fetchActorSuggestions(query, datalistId) {
     data.results.slice(0, 8).forEach(actor => {
       const option = document.createElement("option");
       option.value = actor.name;
-      datalist.appendChild(opt=ion);
-
+      datalist.appendChild(option); // fixed typo
     });
   }
 }
