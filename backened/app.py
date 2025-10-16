@@ -39,7 +39,7 @@ def check_actors(actor_a, actor_b):
     movies = db.session.query(Movie).join(Cast).filter(
         (Cast.actor_id == actor_a.id) | (Cast.actor_id == actor_b.id)
     ).group_by(Movie.id).having(db.func.count(Movie.id) > 1).all()
-    return len(movies) > 0
+    return jsonify([{"id": m.id, "title": m.title} for m in movies])
 
 if __name__ == "__main__":
     app.run(debug=True)
