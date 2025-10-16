@@ -20,6 +20,9 @@ let minLinksPromise = null;
 let gameFinished = false;
 let finalPlayerLinks = null;
 
+// NEW: track comparison card node so we can replace the placeholder when result arrives
+let comparisonCardNode = null;
+
 // Helper to get actor name and profile image by ID
 async function getActorInfo(id) {
     const res = await fetch(`${BASE_URL}/person/${id}?api_key=${API_KEY}`);
@@ -33,24 +36,230 @@ async function getActorInfo(id) {
 }
 
 // small helper to build a path summary string (used for both player & shortest)
+// (kept as a lightweight fallback, UI now renders path cards)
 function buildPathSummary(path) {
     if (!path || path.length === 0) return "";
     let summary = "";
     for (let i = 0; i < path.length - 1; i++) {
-        summary += `<img src="${path[i].profile ? path[i].profile : ""}" style="height:40px;vertical-align:middle;"> ${path[i].name} <br>`;
-        summary += `&nbsp;&nbsp;🎬 <b>${path[i + 1].movieTitle}</b>`;
-        if (path[i + 1].poster)
-            summary += ` <img src="${path[i + 1].poster}" style="height:40px;vertical-align:middle;">`;
-        summary += `<br>`;
+        summary += `${path[i].name} -> ${path[i + 1].name} (${path[i + 1].movieTitle || "?"})\n`;
     }
-    summary += `<img src="${path[path.length - 1].profile ? path[path.length - 1].profile : ""}" style="height:40px;vertical-align:middle;"> ${path[path.length - 1].name}`;
+    summary += `${path[path.length - 1].name}`;
     return summary;
 }
 
-// Update getActorName to use getActorInfo for backward compatibility
-async function getActorName(id) {
-    const info = await getActorInfo(id);
-    return info.name;
+// --- new UI helpers for nicer log cards ---
+function normalizeProfile(obj) {
+    // Accepts objects with .profile, .profile_path, or .poster
+    if (!obj) return null;
+    if (obj.profile) return obj.profile;
+    if (obj.profile_path) return `https://image.tmdb.org/t/p/w92${obj.profile_path}`;
+    return null;
+}
+
+function createActorNode(name, profileUrl) {
+    const wrap = document.createElement("div");
+    wrap.className = "actor-pill";
+    const img = document.createElement("img");
+    img.src = profileUrl || "";
+    img.alt = name;
+    img.onerror = function () { this.style.display = "none"; };
+    const span = document.createElement("div");
+    span.className = "actor-name";
+    span.textContent = name;
+    wrap.appendChild(img);
+    wrap.appendChild(span);
+    return wrap;
+}
+
+function createMovieNode(title, posterUrl) {
+    const wrap = document.createElement("div");
+    wrap.className = "movie-pill";
+    const img = document.createElement("img");
+    img.src = posterUrl || "";
+    img.alt = title;
+    img.onerror = function () { this.style.display = "none"; };
+    const span = document.createElement("div");
+    span.className = "movie-title";
+    span.textContent = title;
+    wrap.appendChild(img);
+    wrap.appendChild(span);
+    return wrap;
+}
+
+function prependToOutput(node) {
+    const output = document.getElementById("output");
+    output.insertBefore(node, output.firstChild);
+}
+
+function appendStepCard(fromActor, toActor, movie) {
+    // fromActor and toActor are objects with .name and either .profile or .profile_path
+    const card = document.createElement("div");
+    card.className = "log-entry step-card";
+
+    const left = createActorNode(fromActor.name, normalizeProfile(fromActor));
+    const arrow1 = document.createElement("div");
+    arrow1.className = "arrow";
+    arrow1.innerHTML = "➡️";
+
+    const movieNode = createMovieNode(movie.title || movie.movieTitle || "?", movie.poster || movie.poster_path);
+
+    const arrow2 = document.createElement("div");
+    arrow2.className = "arrow";
+    arrow2.innerHTML = "➡️";
+
+    const right = createActorNode(toActor.name, normalizeProfile(toActor));
+
+    card.appendChild(left);
+    card.appendChild(arrow1);
+    card.appendChild(movieNode);
+    card.appendChild(arrow2);
+    card.appendChild(right);
+
+    prependToOutput(card);
+}
+
+function appendPathCard(path, headerText) {
+    if (!path || path.length === 0) return;
+    const card = document.createElement("div");
+    card.className = "log-entry path-card";
+
+    const header = document.createElement("div");
+    header.className = "card-header";
+    header.textContent = headerText || "Path";
+    card.appendChild(header);
+
+    const container = document.createElement("div");
+    container.className = "path-steps";
+
+    for (let i = 0; i < path.length; i++) {
+        const p = path[i];
+        const actorNode = createActorNode(p.name, p.profile || p.profile_path);
+        container.appendChild(actorNode);
+        if (i < path.length - 1) {
+            const arrow = document.createElement("div");
+            arrow.className = "small-arrow";
+            arrow.innerHTML = "➡";
+            container.appendChild(arrow);
+
+            const movieNode = createMovieNode(path[i + 1].movieTitle || "?", path[i + 1].poster || path[i + 1].poster_path);
+            container.appendChild(movieNode);
+        }
+    }
+
+    card.appendChild(container);
+    prependToOutput(card);
+}
+
+function appendComparisonCard(playerPathLocal, shortestPathLocal, minLinksLocal, playerLinks, note) {
+    const card = document.createElement("div");
+    card.className = "log-entry compare-card";
+
+    const header = document.createElement("div");
+    header.className = "card-header";
+    header.innerHTML = `Result ${note ? " (updated)" : ""}`;
+    card.appendChild(header);
+
+    const counts = document.createElement("div");
+    counts.className = "counts-row";
+    const playerBadge = document.createElement("div");
+    playerBadge.className = "count-badge";
+    playerBadge.innerHTML = `You: <b>${playerLinks}</b>`;
+
+    const shortestBadge = document.createElement("div");
+    shortestBadge.className = "count-badge";
+    shortestBadge.innerHTML = `Par: <b>${minLinksLocal !== null ? minLinksLocal : "?"}</b>`;
+
+    counts.appendChild(playerBadge);
+    counts.appendChild(shortestBadge);
+    card.appendChild(counts);
+
+    const panels = document.createElement("div");
+    panels.className = "compare-panels";
+
+    const leftPanel = document.createElement("div");
+    leftPanel.className = "panel";
+    const leftHdr = document.createElement("div");
+    leftHdr.className = "panel-title";
+    leftHdr.textContent = "Your path";
+    leftPanel.appendChild(leftHdr);
+    if (playerPathLocal && playerPathLocal.length) {
+        const p = document.createElement("div");
+        p.className = "panel-body";
+        p.innerHTML = ""; // will populate
+        // reuse appendPathCard visuals but inline
+        playerPathLocal.forEach((step, idx) => {
+            const actor = createActorNode(step.name, step.profile || step.profile_path);
+            p.appendChild(actor);
+            if (idx < playerPathLocal.length - 1) {
+                const movieNode = createMovieNode(playerPathLocal[idx + 1].movieTitle || "?", playerPathLocal[idx + 1].poster || playerPathLocal[idx + 1].poster_path);
+                p.appendChild(movieNode);
+            }
+        });
+        leftPanel.appendChild(p);
+    } else {
+        const pEmpty = document.createElement("div");
+        pEmpty.className = "panel-body";
+        pEmpty.textContent = "No path.";
+        leftPanel.appendChild(pEmpty);
+    }
+
+    const rightPanel = document.createElement("div");
+    rightPanel.className = "panel";
+    const rightHdr = document.createElement("div");
+    rightHdr.className = "panel-title";
+    rightHdr.textContent = "Shortest path";
+    rightPanel.appendChild(rightHdr);
+
+    if (shortestPathLocal && shortestPathLocal.length) {
+        const p2 = document.createElement("div");
+        p2.className = "panel-body";
+        shortestPathLocal.forEach((step, idx) => {
+            const actor = createActorNode(step.name, step.profile || step.profile_path);
+            p2.appendChild(actor);
+            if (idx < shortestPathLocal.length - 1) {
+                const movieNode = createMovieNode(shortestPathLocal[idx + 1].movieTitle || "?", shortestPathLocal[idx + 1].poster || shortestPathLocal[idx + 1].poster_path);
+                p2.appendChild(movieNode);
+            }
+        });
+        rightPanel.appendChild(p2);
+    } else {
+        const pEmpty2 = document.createElement("div");
+        pEmpty2.className = "panel-body";
+        pEmpty2.textContent = minLinksLocal === null ? "Still calculating..." : "No path found.";
+        rightPanel.appendChild(pEmpty2);
+    }
+
+    panels.appendChild(leftPanel);
+    panels.appendChild(rightPanel);
+    card.appendChild(panels);
+
+    // difference
+    const diff = document.createElement("div");
+    diff.className = "diff-row";
+    const diffVal = (playerLinks - (minLinksLocal || 0));
+    diff.innerHTML = `You were <b>+${diffVal}</b> from par.`;
+    card.appendChild(diff);
+
+    // If this is an update and we have a placeholder card, replace it.
+    if (note && comparisonCardNode && comparisonCardNode.parentNode) {
+        const output = document.getElementById("output");
+        output.replaceChild(card, comparisonCardNode);
+        comparisonCardNode = card;
+    } else {
+        prependToOutput(card);
+        // store as the comparison card so future updates can replace it
+        comparisonCardNode = card;
+    }
+}
+
+// Replaces plain-text logOutput to keep small messages but still styled
+function logOutput(msg, opts = {}) {
+    const output = document.getElementById("output");
+    const node = document.createElement("div");
+    node.className = "log-entry text-entry";
+    if (opts.level === "error") node.classList.add("error");
+    node.innerHTML = msg;
+    prependToOutput(node);
 }
 
 // Helper to get movie linking two actors
@@ -205,6 +414,9 @@ async function startGame() {
         return;
     }
 
+    // reset comparison card tracking for a new game
+    comparisonCardNode = null;
+
     firstActor = await getActor(startName);
     goalActor = await getActor(goalName);
 
@@ -225,7 +437,6 @@ async function startGame() {
         <b>${goalActor.name}</b>`);
 
     // Start minimum-links calculation in the background so player can play immediately
-    logOutput("🔎 Calculating minimum links in background...");
     calculatingMinLinks = true;
     minLinksPromise = findMinLinksWithPath(firstActor.id, goalActor.id, 3)
         .then(result => {
@@ -233,7 +444,6 @@ async function startGame() {
             if (result) {
                 minLinks = result.minLinks;
                 shortestPath = result.path;
-                logOutput(`🔎 Minimum links found: <b>${minLinks}</b>`);
             } else {
                 minLinks = null;
                 shortestPath = [];
@@ -242,10 +452,8 @@ async function startGame() {
 
             // If player already finished the game, append the shortest-path summary now
             if (gameFinished) {
-                const shortestSummary = (shortestPath && shortestPath.length > 0)
-                    ? buildPathSummary(shortestPath)
-                    : "Shortest path not available.";
-                logOutput(`(Updated) Shortest path (${minLinks !== null ? minLinks : "?"} links):<br>${shortestSummary}<br>You were <b>+${finalPlayerLinks - (minLinks || 0)}</b> from par!`);
+                // use the nicer comparison card UI
+                appendComparisonCard(playerPath, shortestPath, minLinks, finalPlayerLinks, /*note=*/true);
             }
             return result;
         })
@@ -278,7 +486,7 @@ async function nextTurn() {
     try {
         const nextActor = await getActor(nextName);
         if (!nextActor) {
-            logOutput("❌ Actor not found!");
+            logOutput("❌ Actor not found!", { level: "error" });
             return;
         }
 
@@ -286,8 +494,9 @@ async function nextTurn() {
         const match = searchMovie(movies, nextActor.name);
 
         if (match) {
-            logOutput(`✅ <img src="${firstActor.profile_path ? `https://image.tmdb.org/t/p/w45${firstActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${firstActor.name}</b> and <img src="${nextActor.profile_path ? `https://image.tmdb.org/t/p/w45${nextActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${nextActor.name}</b> were in "<b>${match.title}</b>" together.`);
-            logOutput(`<img src="${match.poster}" alt="Movie Poster" style="max-height: 200px;">`);
+            // append structured step card connecting actors and movie
+            appendStepCard(firstActor, nextActor, match);
+
             firstActor = nextActor;
             playerPath.push({
                 id: nextActor.id,
@@ -305,24 +514,16 @@ async function nextTurn() {
                 gameFinished = true;
                 finalPlayerLinks = playerPath.length - 1;
 
-                const playerSummary = buildPathSummary(playerPath);
-
-                let shortestSummaryText = "Shortest path is still being calculated...";
-                let shortestLinksText = "?";
+                // If shortest already available, show comparison card now; otherwise show player path and a placeholder
                 if (!calculatingMinLinks && shortestPath && shortestPath.length > 0 && minLinks != null) {
-                    shortestSummaryText = buildPathSummary(shortestPath);
-                    shortestLinksText = minLinks;
+                    appendComparisonCard(playerPath, shortestPath, minLinks, finalPlayerLinks);
+                } else {
+                    appendComparisonCard(playerPath, [], minLinks, finalPlayerLinks);
+                    // when minLinksPromise resolves it will update with (note) because of earlier .then logic
                 }
-
-                logOutput("🎉 You won!!<br>" +
-                    `Your path (${playerPath.length - 1} links):<br>${playerSummary}<br>` +
-                    `Shortest path (${shortestLinksText} links):<br>${shortestSummaryText}<br>` +
-                    `You were <b>+${finalPlayerLinks - (minLinks || 0)}</b> from par!`);
-
-                // If shortest path is still calculating, minLinksPromise will append an updated summary when ready.
             }
         } else {
-            logOutput(`❌ No link found between <img src="${firstActor.profile_path ? `https://image.tmdb.org/t/p/w45${firstActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${firstActor.name}</b> and <img src="${nextActor.profile_path ? `https://image.tmdb.org/t/p/w45${nextActor.profile_path}` : ""}" style="height:40px;vertical-align:middle;"> <b>${nextActor.name}</b>. You lost!`);
+            logOutput(`❌ No link found between <b>${firstActor.name}</b> and <b>${nextActor.name}</b>. You lost!`, { level: "error" });
             document.getElementById("game").style.display = "none";
             // stop background update if it completes later (we won't post it in this case)
             gameFinished = false;
@@ -330,18 +531,15 @@ async function nextTurn() {
 
         document.getElementById("nextActor").value = "";
     } catch (error) {
-        logOutput("❌ An error occurred. Please try again.");
+        logOutput("❌ An error occurred. Please try again.", { level: "error" });
         console.error(error);
     } finally {
         loadingBar.style.display = "none"; // Hide loading bar
     }
 }
 
-function logOutput(msg) {
-    const output = document.getElementById("output");
-    output.innerHTML = msg + "<br>" + output.innerHTML;
-}
-
+// Removed duplicate plain-text logOutput that caused script errors.
+// (There is already a `function logOutput(msg, opts = {}) { ... }` earlier.)
 async function fetchActorSuggestions(query, datalistId) {
   if (query.length < 2) return; // avoid spamming API for short input
   const res = await fetch(`${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(query)}`);
