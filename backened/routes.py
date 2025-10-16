@@ -65,6 +65,7 @@ def populate_db(num_pages=1):
                                 cast_actor = Actor(
                                     id=cast_member['id'],
                                     name=cast_member['name'],
+                                    profile_path=cast_member.get('profile_path')
                                 )
                                 db.session.add(cast_actor)
                                 db.session.commit()
@@ -72,8 +73,7 @@ def populate_db(num_pages=1):
                             # Add cast entry
                             cast_entry = Cast(
                                 actor_id=cast_member['id'],
-                                movie_id=movie.id,
-                                role=cast_member.get('character')
+                                movie_id=movie.id
                             )
                             db.session.add(cast_entry)
                             db.session.commit()

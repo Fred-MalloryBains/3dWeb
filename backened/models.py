@@ -7,6 +7,7 @@ class Actor(db.Model):
     __tablename__ = "actors"
     id = db.Column(db.Integer, primary_key=True)  # TMDB actor ID
     name = db.Column(db.String(200), nullable=False)
+    profile_path = db.Column(db.String(300))
     # Relationship to movies through the Cast table
     movies = db.relationship("Cast", back_populates="actor")
 

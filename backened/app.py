@@ -3,6 +3,7 @@ from flask import Flask
 from models import db, Actor, Movie, Cast
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///movies.db'
@@ -10,6 +11,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'  # required by Flask-Admin
 
 db.init_app(app)
+migrate = Migrate(app, db)  
 
 with app.app_context():
     db.create_all()  # creates tables
