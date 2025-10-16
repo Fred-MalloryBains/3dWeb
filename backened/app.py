@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from models import db, Actor, Movie, Cast
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
+from sqlalchemy import func
 from flask_migrate import Migrate
 from flask_cors import CORS
 
@@ -40,6 +41,26 @@ def check_actors(actor_a, actor_b):
         (Cast.actor_id == actor_a.id) | (Cast.actor_id == actor_b.id)
     ).group_by(Movie.id).having(db.func.count(Movie.id) > 1).all()
     return jsonify([{"id": m.id, "title": m.title} for m in movies])
+
+@app.route("/api/get_linking_movies", methods=["GET"])
+def get_linking_movies():
+    actor1_id = request.args.get("actor1")
+    actor2_id = request.args.get("actor2")
+    
+    if not actor1_id or not actor2_id:
+        return jsonify({"error": "Invalid actor IDs"}), 400
+
+    # Fetch linking movies from the database
+    linking_movies = (
+        db.session.query(Movie)
+        .join(Cast)
+        .filter(Cast.actor_id.in_([actor1_id, actor2_id]))
+        .group_by(Movie.id)
+        .having(func.count(Cast.actor_id.distinct()) == 2)  # both actors must be present
+        .all()
+    )
+    
+    return jsonify([{"id": m.id, "title": m.title, "poster_path": m.poster_path} for m in linking_movies])
 
 if __name__ == "__main__":
     app.run(debug=True)
