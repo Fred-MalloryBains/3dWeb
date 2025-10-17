@@ -361,7 +361,7 @@ async function getLinkingMovies(actorId1, actorId2) {
 
     if (movies && movies.length > 0) {
         console.log("database used");
-        const m = movies[0];
+        const m = movies.sort((a, b) => b.popularity - a.popularity)[0]; // pick most popular if multiple
         return {
             title: m.title,
             poster: m.poster_path

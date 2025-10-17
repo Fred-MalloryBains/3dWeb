@@ -8,6 +8,7 @@ class Actor(db.Model):
     id = db.Column(db.Integer, primary_key=True)  # TMDB actor ID
     name = db.Column(db.String(200), nullable=False)
     profile_path = db.Column(db.String(300))
+    popularity = db.Column(db.Float)
     # Relationship to movies through the Cast table
     movies = db.relationship("Cast", back_populates="actor")
 
@@ -18,6 +19,7 @@ class Movie(db.Model):
     title = db.Column(db.String(200), nullable=False)
     poster_path = db.Column(db.String(300))
     release_date = db.Column(db.String(50))
+    popularity = db.Column(db.Float)
     # Relationship to actors through the Cast table
     cast = db.relationship("Cast", back_populates="movie")
 
