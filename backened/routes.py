@@ -27,7 +27,8 @@ def fetch_actor_by_name(name):
         return {
             "id": actor.id,
             "name": actor.name,
-            "profile_path": actor.profile_path
+            "profile_path": actor.profile_path,
+            "popularity": actor.popularity
         }
 
     # Fallback to TMDB
@@ -59,7 +60,8 @@ def fetch_actor_movies(actor_id):
                 "id": m.id,
                 "title": m.title,
                 "poster_path": m.poster_path,
-                "release_date": m.release_date
+                "release_date": m.release_date,
+                "popularity": m.popularity
             })
         return result
 
@@ -86,10 +88,10 @@ def fetch_movie_cast(movie_id):
             result.append({
                 "id": a.id,
                 "name": a.name,
-                "profile_path": a.profile_path
+                "profile_path": a.profile_path,
+                "popularity": a.popularity
             })
         return result
-
     # Fallback to TMDB
     url = f"{BASE_URL}/movie/{movie_id}/credits?api_key={TMDB_API_KEY}"
     res = requests.get(url)
@@ -108,7 +110,8 @@ def populate_db(num_pages=1):
                     actor = Actor(
                         id=actor_data['id'],
                         name=actor_data['name'],
-                        profile_path=actor_data.get('profile_path')
+                        profile_path=actor_data.get('profile_path'),
+                        popularity=actor_data.get('popularity')
                     )
                     db.session.add(actor)
                     db.session.commit()
@@ -123,7 +126,8 @@ def populate_db(num_pages=1):
                             id=movie_data['id'],
                             title=movie_data.get('title') or movie_data.get('name') or "Unknown",
                             poster_path=movie_data.get('poster_path'),
-                            release_date=movie_data.get('release_date')
+                            release_date=movie_data.get('release_date'),
+                            popularity=movie_data.get('popularity')
                         )
                         db.session.add(movie)
                         db.session.commit()
@@ -140,7 +144,8 @@ def populate_db(num_pages=1):
                                 cast_actor = Actor(
                                     id=cast_member['id'],
                                     name=cast_member.get('name'),
-                                    profile_path=cast_member.get('profile_path')
+                                    profile_path=cast_member.get('profile_path'),
+                                    popularity=cast_member.get('popularity')
                                 )
                                 db.session.add(cast_actor)
                                 db.session.commit()
@@ -156,4 +161,4 @@ def populate_db(num_pages=1):
         print("Database populated successfully!")
 
 if __name__ == "__main__":
-    populate_db(num_pages=1)  # change pages to fetch more actors
+    populate_db(num_pages=5)  # change pages to fetch more actors
