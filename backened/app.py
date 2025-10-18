@@ -21,7 +21,7 @@ migrate = Migrate(app, db)
 with app.app_context():
     db.create_all()  # creates tables
     
-admin = Admin(app, name="TMDB Admin", template_mode="bootstrap3")
+admin = Admin(app, name="TMDB Admin")
 
 # Add your models to the admin interface
 admin.add_view(ModelView(Actor, db.session))
