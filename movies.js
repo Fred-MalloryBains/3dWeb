@@ -609,6 +609,3 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("goalActor").value = await getRandomActor();
     });
 });
-
-window.startGame = startGame;
-window.nextTurn = nextTurn;

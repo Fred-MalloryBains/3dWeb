@@ -7,10 +7,22 @@ TMDB_API_KEY = "1e63f63886eeec27cacf04aa4928da5a"
 BASE_URL = "https://api.themoviedb.org/3"
 
 def fetch_popular_actors(page=1):
-    url = f"{BASE_URL}/person/popular?api_key={TMDB_API_KEY}&language=en-US&page={page}"
-    res = requests.get(url)
-    data = res.json()
-    return data.get('results', [])
+    params = {
+        "api_key": TMDB_API_KEY,
+        "language": "en-US",
+        "page": page,
+    }
+    response = requests.get(
+        f"{BASE_URL}/person/popular",
+        params=params,
+        timeout=20
+    )
+    response.raise_for_status()
+    data = response.json()
+    return [
+        person for person in data.get("results", [])
+        if person.get("known_for_department") == "Acting"
+    ]
 
 
 def fetch_actor_by_name(name):
@@ -32,8 +44,11 @@ def fetch_actor_by_name(name):
         }
 
     # Fallback to TMDB
-    url = f"{BASE_URL}/search/person?api_key={TMDB_API_KEY}&query={requests.utils.quote(name)}"
-    res = requests.get(url)
+    params = {
+        "api_key": TMDB_API_KEY,
+        "query": name
+    }
+    res = requests.get(f"{BASE_URL}/search/person", params=params, timeout=20)
     data = res.json()
     results = data.get('results', [])
     if results:
@@ -66,8 +81,11 @@ def fetch_actor_movies(actor_id):
         return result
 
     # Fallback to TMDB
-    url = f"{BASE_URL}/person/{actor_id}/movie_credits?api_key={TMDB_API_KEY}"
-    res = requests.get(url)
+    params = {
+        "api_key": TMDB_API_KEY
+    }
+    url = f"{BASE_URL}/person/{actor_id}/movie_credits"
+    res = requests.get(url, params=params, timeout=20)
     data = res.json()
     return data.get('cast', [])
 
@@ -93,8 +111,11 @@ def fetch_movie_cast(movie_id):
             })
         return result
     # Fallback to TMDB
-    url = f"{BASE_URL}/movie/{movie_id}/credits?api_key={TMDB_API_KEY}"
-    res = requests.get(url)
+    params = {
+        "api_key": TMDB_API_KEY
+    }
+    url = f"{BASE_URL}/movie/{movie_id}/credits"
+    res = requests.get(url, params=params, timeout=20)
     data = res.json()
     return data.get('cast', [])
 

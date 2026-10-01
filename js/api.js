@@ -1,0 +1,85 @@
+const TMDB_API_KEY = "1e63f63886eeec27cacf04aa4928da5a";
+const TMDB_BASE_URL = "https://api.themoviedb.org/3";
+const BACKEND_URL = "http://127.0.0.1:5000";
+
+export async function getActor(name) {
+    const response = await fetch(
+        `${TMDB_BASE_URL}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(name)}`
+    );
+
+    const data = await response.json();
+    return data.results?.[0] || null;
+}
+
+export async function getActorInfo(id) {
+    const response = await fetch(
+        `${TMDB_BASE_URL}/person/${id}?api_key=${TMDB_API_KEY}`
+    );
+
+    const data = await response.json();
+
+    return {
+        name: data.name,
+        profile: data.profile_path
+            ? `https://image.tmdb.org/t/p/w92${data.profile_path}`
+            : null
+    };
+}
+
+export async function getLinkingMovies(actorId1, actorId2) {
+    const response = await fetch(
+        `${BACKEND_URL}/api/get_linking_movies?actor1=${encodeURIComponent(actorId1)}&actor2=${encodeURIComponent(actorId2)}`
+    );
+
+    if (!response.ok) {
+        throw new Error(`Backend request failed: ${response.status}`);
+    }
+
+    const movies = await response.json();
+
+    if (!Array.isArray(movies) || movies.length === 0) {
+        return null;
+    }
+
+    const movie = [...movies].sort(
+        (a, b) => (b.popularity || 0) - (a.popularity || 0)
+    )[0];
+
+    return {
+        ...movie,
+        title: movie.title,
+        poster: movie.poster_path
+            ? `https://image.tmdb.org/t/p/w92${movie.poster_path}`
+            : null
+    };
+}
+
+export async function fetchActorSuggestions(query, datalistId) {
+    if (!query) {
+        document.getElementById(datalistId).innerHTML = "";
+        return;
+    }
+
+    const response = await fetch(
+        `${TMDB_BASE_URL}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}`
+    );
+    
+    const data = await response.json();
+    const datalist = document.getElementById(datalistId);
+    datalist.innerHTML = "";
+    data.results.forEach(actor => {
+        const option = document.createElement("option");
+        option.value = actor.name;
+        datalist.appendChild(option);
+    });
+}
+
+export async function getRandomActor() {
+    const response = await fetch(
+        `${TMDB_BASE_URL}/person/popular?api_key=${TMDB_API_KEY}`
+    );
+    
+    const data = await response.json();
+    const randomIndex = Math.floor(Math.random() * data.results.length);
+    return data.results[randomIndex].name;
+}
