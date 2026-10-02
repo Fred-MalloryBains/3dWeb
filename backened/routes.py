@@ -1,185 +1,113 @@
 import requests
 from app import app, db
 from models import Actor, Movie, Cast
+import os 
+from dotenv import load_dotenv
+from seed import populate_db, clear_db
+from flask import jsonify, request 
 
 
-TMDB_API_KEY = "1e63f63886eeec27cacf04aa4928da5a"
-BASE_URL = "https://api.themoviedb.org/3"
+load_dotenv()  # Load environment variables from .env file
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+BASE_URL = os.getenv("BASE_URL")
 
-def fetch_popular_actors(page=1):
-    params = {
-        "api_key": TMDB_API_KEY,
-        "language": "en-US",
-        "page": page,
-    }
-    response = requests.get(
-        f"{BASE_URL}/person/popular",
-        params=params,
-        timeout=20
-    )
-    response.raise_for_status()
-    data = response.json()
-    return [
-        person for person in data.get("results", [])
-        if person.get("known_for_department") == "Acting"
-    ]
-
-
-def fetch_actor_by_name(name):
-    """
-    Try DB first (exact or partial match). If not found, query TMDB and return first result.
-    Returns dict similar to TMDB person result or None.
-    """
-    # exact match
-    actor = Actor.query.filter(Actor.name == name).first()
-    if not actor:
-        # partial/ilike match
-        actor = Actor.query.filter(Actor.name.ilike(f"%{name}%")).first()
-    if actor:
-        return {
+@app.route("/api/actors/search", methods=["GET"])
+def search_actors():
+    print ("log: search_actors called")
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Name parameter is required"}), 400
+    
+    actor = Actor.query.filter(
+        db.func.lower(Actor.name) == name.lower()
+    ).first()
+    
+    if actor: 
+        return jsonify({
             "id": actor.id,
             "name": actor.name,
             "profile_path": actor.profile_path,
-            "popularity": actor.popularity
-        }
+            "source": "database"
+        }) 
+    if not TMDB_API_KEY or not BASE_URL:
+        return jsonify({"error": "TMDB API key or Base URL not configured"}), 500
+    
+    response = requests.get(
+        f"{BASE_URL}/search/person",
+        params={
+            "api_key": TMDB_API_KEY,
+            "query": name,
+            "language": "en-US",
+            "page": 1,
+            "include_adult": False
+        },
+        timeout=10
+    )
+    response.raise_for_status()
+    
+    results = response.json().get("results", [])
+    print (results)
+    actor_data = next(
+        (
+            person for person in results
+            if person.get("known_for_department") == "Acting"
+        ),
+        None
+    )
+    if not actor_data:
+        return jsonify({"error": "Actor not found"}), 404
+    
+    # Save the actor to the database if not already present
+    actor = Actor(
+        id=actor_data["id"],
+        name=actor_data["name"],
+        profile_path=actor_data.get("profile_path"),
+        popularity=actor_data.get("popularity", 0.0),
+    )
+    db.session.add(actor)
+    db.session.commit()
+    
+    return jsonify({
+        "id": actor.id,
+        "name": actor.name,
+        "profile_path": actor.profile_path,
+        "source": "tmdb"
+    })
 
-    # Fallback to TMDB
-    params = {
-        "api_key": TMDB_API_KEY,
-        "query": name
-    }
-    res = requests.get(f"{BASE_URL}/search/person", params=params, timeout=20)
-    data = res.json()
-    results = data.get('results', [])
-    if results:
-        return results[0]
-    return None
+@app.route("/api/actors", methods=["GET"])
+def get_actors():
+    actors = Actor.query.all()
+    data = [{"id": a.id, "name": a.name, "profile_path": a.profile_path} for a in actors]
+    return jsonify(data)
 
+@app.route("/api/movies", methods=["GET"])
+def check_actors(actor_a, actor_b):
+    # Check if two actors have worked together
+    movies = db.session.query(Movie).join(Cast).filter(
+        (Cast.actor_id == actor_a.id) | (Cast.actor_id == actor_b.id)
+    ).group_by(Movie.id).having(db.func.count(Movie.id) > 1).all()
+    return jsonify([{"id": m.id, "title": m.title} for m in movies])
 
-def fetch_actor_movies(actor_id):
-    """
-    Try DB first: return movies linked through Cast table.
-    If none found in DB, fallback to TMDB movie credits.
-    Return a list of movie dicts with at least id, title, poster_path.
-    """
-    # Query DB
-    movies = (db.session.query(Movie)
-              .join(Cast, Movie.id == Cast.movie_id)
-              .filter(Cast.actor_id == actor_id)
-              .distinct()
-              .all())
-    if movies and len(movies) > 0:
-        result = []
-        for m in movies:
-            result.append({
-                "id": m.id,
-                "title": m.title,
-                "poster_path": m.poster_path,
-                "release_date": m.release_date,
-                "popularity": m.popularity
-            })
-        return result
+@app.route("/api/get_linking_movies", methods=["GET"])
+def get_linking_movies():
+    actor1_id = request.args.get("actor1")
+    actor2_id = request.args.get("actor2")
+    
+    if not actor1_id or not actor2_id:
+        return jsonify({"error": "Invalid actor IDs"}), 400
 
-    # Fallback to TMDB
-    params = {
-        "api_key": TMDB_API_KEY
-    }
-    url = f"{BASE_URL}/person/{actor_id}/movie_credits"
-    res = requests.get(url, params=params, timeout=20)
-    data = res.json()
-    return data.get('cast', [])
-
-
-def fetch_movie_cast(movie_id):
-    """
-    Try DB first: return cast entries (actors) for the movie.
-    If none found in DB, fallback to TMDB movie credits.
-    Return a list of cast dicts with id, name, profile_path, and character if available.
-    """
-    cast_entries = (db.session.query(Actor)
-                    .join(Cast, Actor.id == Cast.actor_id)
-                    .filter(Cast.movie_id == movie_id)
-                    .all())
-    if cast_entries and len(cast_entries) > 0:
-        result = []
-        for a in cast_entries:
-            result.append({
-                "id": a.id,
-                "name": a.name,
-                "profile_path": a.profile_path,
-                "popularity": a.popularity
-            })
-        return result
-    # Fallback to TMDB
-    params = {
-        "api_key": TMDB_API_KEY
-    }
-    url = f"{BASE_URL}/movie/{movie_id}/credits"
-    res = requests.get(url, params=params, timeout=20)
-    data = res.json()
-    return data.get('cast', [])
-
-
-def populate_db(num_pages=1):
-    with app.app_context():
-        for page in range(1, num_pages+1):
-            actors = fetch_popular_actors(page)
-            for actor_data in actors:
-                # Add actor if not exists
-                actor = Actor.query.get(actor_data['id'])
-                if not actor:
-                    actor = Actor(
-                        id=actor_data['id'],
-                        name=actor_data['name'],
-                        profile_path=actor_data.get('profile_path'),
-                        popularity=actor_data.get('popularity')
-                    )
-                    db.session.add(actor)
-                    db.session.commit()
-
-                # Fetch actor's movies
-                movies = fetch_actor_movies(actor.id)
-                for movie_data in movies:
-                    # Add movie if not exists
-                    movie = Movie.query.get(movie_data['id'])
-                    if not movie:
-                        movie = Movie(
-                            id=movie_data['id'],
-                            title=movie_data.get('title') or movie_data.get('name') or "Unknown",
-                            poster_path=movie_data.get('poster_path'),
-                            release_date=movie_data.get('release_date'),
-                            popularity=movie_data.get('popularity')
-                        )
-                        db.session.add(movie)
-                        db.session.commit()
-
-                    # Fetch cast for this movie
-                    cast_list = fetch_movie_cast(movie.id)
-                    for cast_member in cast_list:
-                        # Add cast entry if not exists
-                        existing = Cast.query.filter_by(actor_id=cast_member['id'], movie_id=movie.id).first()
-                        if not existing:
-                            # Add actor in database if missing
-                            cast_actor = Actor.query.get(cast_member['id'])
-                            if not cast_actor:
-                                cast_actor = Actor(
-                                    id=cast_member['id'],
-                                    name=cast_member.get('name'),
-                                    profile_path=cast_member.get('profile_path'),
-                                    popularity=cast_member.get('popularity')
-                                )
-                                db.session.add(cast_actor)
-                                db.session.commit()
-
-                            # Add cast entry
-                            cast_entry = Cast(
-                                actor_id=cast_member['id'],
-                                movie_id=movie.id
-                            )
-                            db.session.add(cast_entry)
-                            db.session.commit()
-
-        print("Database populated successfully!")
-
+    # Fetch linking movies from the database
+    linking_movies = (
+        db.session.query(Movie)
+        .join(Cast)
+        .filter(Cast.actor_id.in_([actor1_id, actor2_id]))
+        .group_by(Movie.id)
+        .having(func.count(Cast.actor_id.distinct()) == 2)  # both actors must be present
+        .all()
+    )
+    
+    return jsonify([{"id": m.id, "title": m.title, "poster_path": m.poster_path} for m in linking_movies])
+        
 if __name__ == "__main__":
+    #clear_db()  # Uncomment this line if you want to wipe the database before populating
     populate_db(num_pages=5)  # change pages to fetch more actors

@@ -3,12 +3,17 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const BACKEND_URL = "http://127.0.0.1:5000";
 
 export async function getActor(name) {
+    console.log(`log: getActor called with name: ${name}`);
+
     const response = await fetch(
-        `${TMDB_BASE_URL}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(name)}`
+        `${BACKEND_URL}/api/actors/search?name=${encodeURIComponent(name)}`
     );
 
-    const data = await response.json();
-    return data.results?.[0] || null;
+    if (!response.ok) {
+        throw new Error(`Backend request failed: ${response.status}`);
+    }
+
+    return await response.json();
 }
 
 export async function getActorInfo(id) {
