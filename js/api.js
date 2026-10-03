@@ -3,7 +3,6 @@ const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 const BACKEND_URL = "http://127.0.0.1:5000";
 
 export async function getActor(name) {
-    console.log(`log: getActor called with name: ${name}`);
 
     const response = await fetch(
         `${BACKEND_URL}/api/actors/search?name=${encodeURIComponent(name)}`
@@ -70,9 +69,17 @@ export async function fetchActorSuggestions(query, datalistId) {
     );
     
     const data = await response.json();
+    const seenNames = new Set();
+    const uniqueResults = data.results.filter(actor => {
+        if (seenNames.has(actor.name)) {
+            return false;
+        }
+        seenNames.add(actor.name);
+        return true;
+    });
     const datalist = document.getElementById(datalistId);
     datalist.innerHTML = "";
-    data.results.forEach(actor => {
+    uniqueResults.forEach(actor => {
         const option = document.createElement("option");
         option.value = actor.name;
         datalist.appendChild(option);

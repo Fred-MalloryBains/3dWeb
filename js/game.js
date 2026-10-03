@@ -1,8 +1,11 @@
 import { getActor, getLinkingMovies } from "./api.js";
 import { gameState, resetGameState } from "./gameState.js";
-import { appendStepCard, 
-         logOutput
-        } from "./dom.js";
+import {
+    appendStepCard,
+    logOutput,
+    renderTurnHeader,
+    renderActorPreview
+} from "./dom.js";
 import { findMinLinksWithPath } from "./graph.js";
 
 export async function startGame() {
@@ -33,13 +36,18 @@ export async function startGame() {
         }
     ];
 
+        renderTurnHeader(gameState.firstActor, gameState.goalActor);
+
     document.getElementById("game").style.display = "block";
-    document.getElementById("goalName").textContent = gameState.goalActor.name;
     document.getElementById("setup").style.display = "none";
 }
 
-export async function nextTurn() {
-    const nextName = document.getElementById("nextActor").value.trim();
+export async function nextTurn(actorName = null) {
+    const nextName = (
+        typeof actorName === "string"
+            ? actorName
+            : document.getElementById("nextActor").value
+        ).trim();
     if (!nextName) return;
 
     const loadingBar = document.getElementById("loadingBar");
@@ -61,6 +69,7 @@ export async function nextTurn() {
             appendStepCard(gameState.firstActor, nextActor, match);
 
             gameState.firstActor = nextActor;
+            renderTurnHeader(gameState.firstActor, gameState.goalActor);
             gameState.playerPath.push({
                 id: nextActor.id,
                 name: nextActor.name,
@@ -72,13 +81,13 @@ export async function nextTurn() {
             });
 
             if (nextActor.name === gameState.goalActor.name) {
-                // Game won, show summary (shortest path may still be calculating)
+                
                 document.getElementById("game").style.display = "none";
                 gameState.gameFinished = true;
                 gameState.finalPlayerLinks = gameState.playerPath.length - 1;
                  
                 logOutput(`🎉 Congratulations! You reached <b>${gameState.goalActor.name}</b> in ${gameState.finalPlayerLinks} links!`, { level: "success" });
-                    
+                showRestartButton();
                 
             }
         } else {
@@ -86,6 +95,8 @@ export async function nextTurn() {
             document.getElementById("game").style.display = "none";
             // stop background update if it completes later (we won't post it in this case)
             gameState.gameFinished = false;
+
+            showRestartButton();
         }
 
         document.getElementById("nextActor").value = "";
@@ -97,5 +108,29 @@ export async function nextTurn() {
     }
 }
 
+export async function finishGame() {
+    resetGameState();
+    document.getElementById("game").style.display = "none";
+    document.getElementById("setup").style.display = "block";
 
+    document.getElementById("startActor").value = "";
+    document.getElementById("goalActor").value = "";
+    document.getElementById("nextActor").value = "";
 
+    document.getElementById("startSuggestions").replaceChildren();
+    document.getElementById("goalSuggestions").replaceChildren();
+    document.getElementById("nextSuggestions").replaceChildren();
+
+    document.getElementById("output").replaceChildren();
+
+    renderActorPreview("startPreview", null);
+    renderActorPreview("goalPreview", null);
+    renderActorPreview("currentActorPreview", null);
+    renderActorPreview("goalActorPreview", null);
+
+    document.getElementById("restartGameButton").hidden = true;
+}
+
+function showRestartButton() {
+    document.getElementById("restartGameButton").hidden = false;
+}

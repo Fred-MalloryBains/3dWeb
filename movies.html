@@ -12,17 +12,28 @@
     <input id="startActor" list="startSuggestions" placeholder="Enter Initial Actor Name" />
     <datalist id="startSuggestions"></datalist>
     <button id="randomStartBtn" type="button">🎲 Random</button>
+    <div id="startPreview" class="actor-preview"></div>
 
     <input id="goalActor" list="goalSuggestions" placeholder="Enter Goal Actor Name" />
     <datalist id="goalSuggestions"></datalist>
     <button id="randomGoalBtn" type="button">🎲 Random</button>
+    <div id="goalPreview" class="actor-preview"></div>
     <button id="startGameButton" type="button">Start Game</button>
   </div>
 
   <div id="game" style="display:none;">
-  <p>Goal: <span id="goalName"></span></p>
+  <section id="turnHeader">
+    <div id="currentActorPreview"></div>
+    <p>
+      Connect <strong id="currentActorName"></strong>
+      to <strong id="goalActorName"></strong>
+    </p>
+    <div id="goalActorPreview"></div>
+  </section>
   <input id="nextActor" list="nextSuggestions" placeholder="Enter next actor name" />
   <button id="submitActorButton" type="button">Submit Actor</button>
+  <button id="finishGameButton" type="button">Finish Game</button>
+  
   <datalist id="nextSuggestions"></datalist>
   <div id="loadingBar" style="display:none; margin-top: 10px;">
     <p>Loading...</p>
@@ -31,6 +42,7 @@
 </div>
 
   <div id="output"></div>
+  <button id="restartGameButton" type="button" hidden>Restart Game</button>
   <script type="module" src="js/main.js"></script>
   </body>
 </html>

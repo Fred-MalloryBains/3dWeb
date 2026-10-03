@@ -19,6 +19,55 @@ input, button {
 input {
   width: 250px;
 }
+
+.actor-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+
+.actor-preview {
+  min-height: 145px;
+}
+
+.actor-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 204, 0, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.actor-preview-card img {
+  width: 92px;
+  height: 120px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+#turnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  margin: 24px auto;
+  text-align: center;
+}
+
+#turnHeader p {
+  max-width: 180px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+#turnHeader strong {
+  color: #ffcc00;
+}
 button {
   background-color: #ffcc00;
   color: #000;
@@ -33,6 +82,14 @@ button {
   width: 80%;
   max-width: 600px;
   white-space: pre-wrap;
+}
+
+#restartGameButton {
+    margin-top: 1rem;
+}
+
+#restartGameButton[hidden] {
+    display: none;
 }
 
 /* --- new styles for nicer log cards --- */
@@ -156,6 +213,9 @@ button {
   .step-card { flex-direction: column; align-items: flex-start; }
   .compare-panels { flex-direction: column; }
   #output { width: 96%; }
+  #turnHeader { gap: 10px; }
+  #turnHeader p { max-width: 130px; }
+  .actor-preview-card img { width: 72px; height: 94px; }
 }
 
 /* end of file */

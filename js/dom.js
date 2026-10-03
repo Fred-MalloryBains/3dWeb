@@ -65,3 +65,34 @@ export function logOutput(message, options = null) {
     element.innerHTML = message;
     output.prepend(element);
 }
+
+export function renderActorPreview(containerId, actor) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    container.replaceChildren();
+    if (!actor) return;
+
+    const card = document.createElement("div");
+    card.className = "actor-preview-card";
+
+    const image = document.createElement("img");
+    image.src = imageUrl(actor.profile || actor.profile_path, "w185");
+    image.alt = actor.name;
+    image.onerror = () => {
+        image.style.display = "none";
+    };
+
+    const name = document.createElement("strong");
+    name.textContent = actor.name;
+
+    card.append(image, name);
+    container.append(card);
+}
+
+export function renderTurnHeader(currentActor, goalActor) {
+    document.getElementById("currentActorName").textContent = currentActor.name;
+    document.getElementById("goalActorName").textContent = goalActor.name;
+    renderActorPreview("currentActorPreview", currentActor);
+    renderActorPreview("goalActorPreview", goalActor);
+}
