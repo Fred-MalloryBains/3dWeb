@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from seed import populate_db, clear_db
 from flask import jsonify, request
 from sqlalchemy import func
+import random
 
 load_dotenv()  # Load environment variables from .env file
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
@@ -199,11 +200,92 @@ def get_linking_movies():
         print(f"TMDB request error: {e}")
         return jsonify({"error": "Failed to query TMDB"}), 502
     
+@app.route("/api/fetch_actor_suggestions", methods=["GET"])
+def fetch_actor_suggestions():
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify([])
+
+    # Search local DB first
+    local_results = Actor.query.filter(Actor.name.ilike(f"%{query}%")).limit(10).all()
+    if local_results:
+        return jsonify([{"id": a.id, "name": a.name} for a in local_results])
+
+    # If no local results, fallback to TMDB
+    if not TMDB_API_KEY or not BASE_URL:
+        return jsonify({"error": "TMDB API key or Base URL not configured"}), 500
+
+    try:
+        response = requests.get(
+            f"{BASE_URL}/search/person",
+            params={
+                "api_key": TMDB_API_KEY,
+                "query": query,
+                "language": "en-US",
+                "page": 1,
+                "include_adult": False
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        
+        normalised_query = query.strip().casefold()
+        
+        actor_suggestions = [
+            {"id": person["id"], "name": person["name"]}
+            for person in results
+            if person.get("known_for_department") == "Acting"
+        ][:10]  # Limit to top 10 suggestions
+
+        if any(
+            normalised_query == person["name"].strip().casefold()
+            for person in actor_suggestions
+        ): # Return empty if the query is already in suggestions
+            return jsonify([])
+
+    except requests.exceptions.RequestException as e:
+        print(f"TMDB request error: {e}")
+        return jsonify({"error": "Failed to query TMDB"}), 502
+
+
+@app.route("/api/get_random_actor", methods=["GET"])
+def get_random_actor():
+    actors = Actor.query.order_by(Actor.popularity.desc())[:100]
+    actor = actors[random.randint(0, 99)] if actors else None
+    if actor:
+        return jsonify({"id": actor.id, "name": actor.name, "profile_path": actor.profile_path})
+    else:
+        return jsonify({"error": "No actors found in the database"}), 404
+
+@app.route("/api/get_actor_info", methods=["GET"])
+def get_actor_info():
+    actor_id = request.args.get("id")
+    if not actor_id:
+        return jsonify({"error": "No actor ID provided"}), 400
+
+    actor = Actor.query.get(actor_id)
+    if not actor:
+        try: 
+            response = requests.get(
+                f"{BASE_URL}/person/{actor_id}",
+                params={"api_key": TMDB_API_KEY, "language": "en-US"},
+                timeout=10
+            )
+            response.raise_for_status()
+            return jsonify(response.json())
+        except requests.exceptions.RequestException as e:
+            print(f"TMDB request error: {e}")
+            return jsonify({"error": "Failed to query TMDB"}), 502
+
+    return jsonify({
+        "id": actor.id,
+        "name": actor.name,
+        "profile_path": actor.profile_path
+    })
+
 @app.route("/api/get_path", methods=["GET"])
 def get_path():
     ## This endpoint is a placeholder for the pathfinding logic between two actors.
     pass
        
-if __name__ == "__main__":
-    #clear_db()  # Uncomment this line if you want to wipe the database before populating
-    populate_db(num_pages=5)  # change pages to fetch more actors

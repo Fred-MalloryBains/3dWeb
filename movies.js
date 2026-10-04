@@ -2,7 +2,7 @@ export function load_animation_data() {
     return;
 }
 
-const API_KEY = "1e63f63886eeec27cacf04aa4928da5a";
+//const API_KEY 
 
 
 // Example function to fetch popular movies
