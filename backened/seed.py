@@ -30,6 +30,25 @@ def fetch_popular_actors(page=1):
         if person.get("known_for_department") == "Acting"
         and not person.get("adult", False)
     ]
+    
+def fetch_top_english_movies(page=1):
+    """
+    Directly query TMDB's discover API for popular English-language feature films.
+    Filters out adult, documentaries (99), and TV movies (10770).
+    """
+    params = {
+        "api_key": TMDB_API_KEY,
+        "language": "en-US",
+        "with_original_language": "en",
+        "sort_by": "popularity.desc",
+        "vote_count.gte": MIN_VOTE_COUNT,
+        "without_genres": "99,10770",
+        "include_adult": "false",
+        "page": page,
+    }
+    response = requests.get(f"{BASE_URL}/discover/movie", params=params, timeout=20)
+    response.raise_for_status()
+    return response.json().get("results", [])
 
 def is_valid_movie(movie_data):
     """
@@ -91,67 +110,57 @@ def fetch_movie_cast(movie_id):
     return filtered_cast[:MAX_CAST_PER_MOVIE]
 
 
-def populate_db(num_pages=5):
+def populate_db(num_pages=10):
     with app.app_context():
         for page in range(1, num_pages + 1):
-            print(f"Fetching popular actors page {page}...")
-            actors = fetch_popular_actors(page)
-            print (len(actors), "actors fetched.")
+            print(f"Fetching English discover movies page {page}...")
+            movies_data = fetch_top_english_movies(page)
 
-            for actor_data in actors:
-                actor = Actor.query.get(actor_data["id"])
-                if not actor:
-                    actor = Actor(
-                        id=actor_data["id"],
-                        name=actor_data["name"],
-                        profile_path=actor_data.get("profile_path"),
-                        popularity=actor_data.get("popularity", 0.0),
+            for m_data in movies_data:
+                # 1. Upsert Movie
+                movie = db.session.get(Movie, m_data["id"])
+                if not movie:
+                    movie = Movie(
+                        id=m_data["id"],
+                        title=m_data.get("title") or "Unknown",
+                        poster_path=m_data.get("poster_path"),
+                        release_date=m_data.get("release_date") or None,
+                        popularity=m_data.get("popularity", 0.0),
                     )
-                    db.session.add(actor)
+                    db.session.add(movie)
+                    db.session.flush()  # Ensure movie ID is tracked in session
 
-                # Fetch and filter actor's movies
-                valid_movies = fetch_actor_movies(actor.id)
-
-                for movie_data in valid_movies:
-                    movie = Movie.query.get(movie_data["id"])
-                    if not movie:
-                        movie = Movie(
-                            id=movie_data["id"],
-                            title=movie_data.get("title") or "Unknown",
-                            poster_path=movie_data.get("poster_path"),
-                            release_date=movie_data.get("release_date") or None,
-                            popularity=movie_data.get("popularity", 0.0),
+                # 2. Ingest Top Cast for this movie
+                top_cast = fetch_movie_cast(movie.id)
+                for cast_member in top_cast:
+                    actor = db.session.get(Actor, cast_member["id"])
+                    if not actor:
+                        actor = Actor(
+                            id=cast_member["id"],
+                            name=cast_member.get("name"),
+                            profile_path=cast_member.get("profile_path"),
+                            popularity=cast_member.get("popularity", 0.0),
                         )
-                        db.session.add(movie)
+                        db.session.add(actor)
+                        db.session.flush()
 
-                    # Ingest top cast members for this movie
-                    top_cast = fetch_movie_cast(movie.id)
-                    for cast_member in top_cast:
-                        cast_actor = Actor.query.get(cast_member["id"])
-                        if not cast_actor:
-                            cast_actor = Actor(
-                                id=cast_member["id"],
-                                name=cast_member.get("name"),
-                                profile_path=cast_member.get("profile_path"),
-                                popularity=cast_member.get("popularity", 0.0),
-                            )
-                            db.session.add(cast_actor)
+                    # 3. Create Cast Association
+                    existing_cast = Cast.query.filter_by(
+                        actor_id=actor.id,
+                        movie_id=movie.id
+                    ).first()
 
-                        existing_cast = Cast.query.filter_by(
-                            actor_id=cast_member["id"],
+                    if not existing_cast:
+                        db.session.add(Cast(
+                            actor_id=actor.id,
                             movie_id=movie.id
-                        ).first()
+                        ))
 
-                        if not existing_cast:
-                            db.session.add(Cast(
-                                actor_id=cast_member["id"],
-                                movie_id=movie.id
-                            ))
+            # Commit once per discover page
+            db.session.commit()
+            print(f"Committed page {page} successfully.")
 
-                # Commit per primary actor iteration to persist in batches
-                db.session.commit()
-
-        print("Database populated successfully with filtered catalog!")
+        print("Database populated successfully with English-focused catalog!")
 
 def clear_db():
     with app.app_context():
@@ -161,3 +170,7 @@ def clear_db():
         Actor.query.delete()
         db.session.commit()
         print("Database wiped successfully.")
+        
+if __name__ == "__main__":
+    #clear_db()  # Uncomment this line if you want to wipe the database before populating
+    populate_db(num_pages=20)  #change pages to fetch more actors
